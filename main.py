@@ -8,7 +8,7 @@ from models import Discriminator, generate_random_population, Generator
 
 batch_size = 32  # Number of individuals to evaluate simultaneously
 num_seeds = 5  # Number of seed genomes to evolve that satisfy the MC
-resource_limit = 2  # Max number of evaluations that count towards MC
+resource_limit = 5  # Max number of evaluations that count towards MC
 viable_pop_capacity = 50
 
 # Evolve seed genomes that satisfy MC
@@ -25,17 +25,21 @@ for _ in range(100):
     if isinstance(child, Generator):
       for _child in children:
         if isinstance(_child, Discriminator) and _child.usage < resource_limit:
-          eval_indiv = _child
+          generator = child
+          eval_indiv = discriminator = _child
           break
     else:
       for j in range(i, len(children)):
         if isinstance(children[j], Generator):
-          eval_indiv = children[j]
+          discriminator = child
+          eval_indiv = generator = children[j]
         break
     if eval_indiv is None: break
 
-    mc_satisfied = evaluate_mc(child, eval_indiv) if isinstance(child, Generator) else evaluate_mc(eval_indiv, child)
-    if mc_satisfied: viable_pop.append(child)
+    mc_satisfied = evaluate_mc(generator, discriminator)
+    if mc_satisfied:
+      discriminator.usage += 1
+      viable_pop.append(child)
     eval_indiv = None
 
   if len(viable_pop) > viable_pop_capacity:
