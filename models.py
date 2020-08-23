@@ -3,17 +3,16 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class CoordConv2d(nn.Module):
+class CoordConv2d(nn.Conv2d):
   def __init__(self, in_channels, out_channels, kernel_size, height, width, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
-    super().__init__()
+    super().__init__(in_channels + 2, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, padding_mode=padding_mode)
     self.height, self.width = height, width
-    self.conv = nn.Conv2d(in_channels + 2, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, padding_mode=padding_mode)
     x_grid, y_grid = torch.meshgrid(torch.linspace(-1, 1, width), torch.linspace(-1, 1, height))
     self.register_buffer('coordinates', torch.stack([x_grid, y_grid]).unsqueeze(dim=0))
 
   def forward(self, x):
     x = torch.cat([x, self.coordinates.expand(x.size(0), 2, self.height, self.width)], dim=1)  # Concatenate spatial embeddings TODO: radius?
-    return self.conv(x)
+    return super().forward(x)
 
 
 class SelfAttention2d(nn.Module):
