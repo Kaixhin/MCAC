@@ -13,7 +13,7 @@ def evaluate_mc(generator, discriminator):
   I += 1
   with torch.no_grad():
     img = generator()
-    mc_satisfied = discriminator(img).item() > 0.5
+    mc_satisfied = discriminator(img).std().item() > 0.3
     if mc_satisfied: save_image(img, f'results/{I}.png')
     return mc_satisfied
 

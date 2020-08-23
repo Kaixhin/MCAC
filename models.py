@@ -16,10 +16,10 @@ class Generator(nn.Module):
     self.bn3 = nn.BatchNorm2d(2 * hidden_size)
     self.conv4 = nn.ConvTranspose2d(2 * hidden_size, hidden_size, 4, stride=2, padding=1, bias=False)
     self.bn4 = nn.BatchNorm2d(hidden_size)  
-    self.conv5 = nn.ConvTranspose2d(hidden_size, 3, 4, stride=2, padding=1)
+    self.conv5 = nn.ConvTranspose2d(hidden_size, 1, 4, stride=2, padding=1)
   
   def forward(self):
-    z = self.z.view(-1, self.latent_size, 1, 1)
+    z = self.z.view(1, self.latent_size, 1, 1) * torch.randn(64, self.latent_size, 1, 1)
     x = F.relu(self.bn1(self.conv1(z)))
     x = F.relu(self.bn2(self.conv2(x)))
     x = F.relu(self.bn3(self.conv3(x)))
@@ -31,7 +31,7 @@ class Discriminator(nn.Module):
   def __init__(self, hidden_size=8):
     super().__init__()
     self.usage = 0
-    self.conv1 = nn.Conv2d(3, hidden_size, 4, stride=2, padding=1, bias=False)
+    self.conv1 = nn.Conv2d(1, hidden_size, 4, stride=2, padding=1, bias=False)
     self.bn1 = nn.BatchNorm2d(hidden_size)
     self.conv2 = nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.bn2 = nn.BatchNorm2d(2 * hidden_size)
