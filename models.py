@@ -38,6 +38,8 @@ class SelfAttention2d(nn.Module):
 class Generator(nn.Module):
   def __init__(self, latent_size, hidden_size=8):
     super().__init__()
+    self.age = 0
+
     self.latent_size = latent_size
     self.z = nn.Parameter(torch.randn(latent_size))
     self.conv1 = nn.ConvTranspose2d(latent_size, 8 * hidden_size, 4, stride=1, padding=0, bias=False)
@@ -59,7 +61,9 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
   def __init__(self, hidden_size=8):
     super().__init__()
+    self.age = 0
     self.usage = 0
+
     self.conv1 = CoordConv2d(1, hidden_size, 4, 64, 64, stride=2, padding=1, bias=False)
     self.conv2 = nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.conv3 = nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False)

@@ -2,20 +2,25 @@ from collections import deque
 import torch
 from torchvision.utils import save_image
 
-from evo import evaluate_mc, evolve_seed_genomes, reproduce
+from evo import evaluate_mc, evolve_seed_genomes, remove_oldest, reproduce
 from models import Discriminator, generate_random_population, Generator
 
 
-batch_size = 32  # Number of individuals to evaluate simultaneously
+batch_size = 64  # Number of individuals to evaluate simultaneously
 num_seeds = 5  # Number of seed genomes to evolve that satisfy the MC
 resource_limit = 5  # Max number of evaluations that count towards MC
-viable_pop_capacity = 50
+viable_pop_capacity = 200
+max_epochs = 500
 
 # Evolve seed genomes that satisfy MC
-rand_pop = generate_random_population(20)
+rand_pop = generate_random_population(50)
 viable_pop = deque(evolve_seed_genomes(rand_pop, num_seeds))
 
-for _ in range(100):
+for _ in range(max_epochs):
+  # Increase age of all solutions in viable population
+  for s in viable_pop:
+    s.age += 1
+
   # Reproduce children and add parents back into queue
   parents = [viable_pop.popleft() for _ in range(batch_size)]
   children = reproduce(parents)
@@ -44,4 +49,4 @@ for _ in range(100):
 
   if len(viable_pop) > viable_pop_capacity:
     num_removals = len(viable_pop) - viable_pop_capacity
-    # TODO: remove_oldest(viable_pop, num_removals)
+    viable_pop = remove_oldest(viable_pop, num_removals)
