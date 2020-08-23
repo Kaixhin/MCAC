@@ -29,6 +29,6 @@ def reproduce(parents):
     child = deepcopy(parent)
     if isinstance(child, Discriminator): child.usage = 0
     for parameter in child.parameters():
-      parameter.data.add_(0.1 * torch.randn_like(parameter.data))
+      parameter.data.add_(0.2 * torch.randn_like(parameter.data))
     children.append(child)
   return children
