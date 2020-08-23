@@ -3,6 +3,19 @@ from torch import nn
 from torch.nn import functional as F
 
 
+class CoordConv2d(nn.Module):
+  def __init__(self, in_channels, out_channels, kernel_size, height, width, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
+    super().__init__()
+    self.height, self.width = height, width
+    self.conv = nn.Conv2d(in_channels + 2, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, padding_mode=padding_mode)
+    x_grid, y_grid = torch.meshgrid(torch.linspace(-1, 1, width), torch.linspace(-1, 1, height))
+    self.register_buffer('coordinates', torch.stack([x_grid, y_grid]).unsqueeze(dim=0))
+
+  def forward(self, x):
+    x = torch.cat([x, self.coordinates.expand(x.size(0), 2, self.height, self.width)], dim=1)  # Concatenate spatial embeddings TODO: radius?
+    return self.conv(x)
+
+
 class SelfAttention2d(nn.Module):
   def __init__(self, in_channels):
     super().__init__()
@@ -48,7 +61,7 @@ class Discriminator(nn.Module):
   def __init__(self, hidden_size=8):
     super().__init__()
     self.usage = 0
-    self.conv1 = nn.Conv2d(1, hidden_size, 4, stride=2, padding=1, bias=False)
+    self.conv1 = CoordConv2d(1, hidden_size, 4, 64, 64, stride=2, padding=1, bias=False)
     self.conv2 = nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.conv3 = nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.att3 = SelfAttention2d(4 * hidden_size)
