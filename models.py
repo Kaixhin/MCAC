@@ -3,6 +3,11 @@ from torch import nn
 from torch.nn import functional as F
 
 
+def relu_sin_tanh(x):
+  x1, x2, x3 = x.chunk(3, dim=-1)
+  return torch.cat([F.relu(x1), torch.sin(x2), torch.tanh(x3)], dim=-1)
+
+
 class CoordConv2d(nn.Conv2d):
   def __init__(self, in_channels, out_channels, kernel_size, height, width, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
     super().__init__(in_channels + 2, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, padding_mode=padding_mode)
@@ -40,22 +45,26 @@ class Generator(nn.Module):
     super().__init__()
     self.age = 0
 
+    self.height, self.width = 64, 64
+    x_grid, y_grid = torch.meshgrid(torch.linspace(-3, 3, self.width), torch.linspace(-3, 3, self.height))
+    self.register_buffer('coordinates', torch.stack([x_grid, y_grid]).unsqueeze(dim=0))
     self.latent_size = latent_size
     self.z = nn.Parameter(torch.randn(latent_size))
-    self.conv1 = nn.ConvTranspose2d(latent_size, 8 * hidden_size, 4, stride=1, padding=0, bias=False)
-    self.conv2 = nn.ConvTranspose2d(8 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False)
-    self.conv3 = nn.ConvTranspose2d(4 * hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False)
-    self.att3 = SelfAttention2d(2 * hidden_size)
-    self.conv4 = nn.ConvTranspose2d(2 * hidden_size, hidden_size, 4, stride=2, padding=1, bias=False)
-    self.conv5 = nn.ConvTranspose2d(hidden_size, 1, 4, stride=2, padding=1)
+    self.fc1 = nn.Linear(latent_size + 2, 3 * hidden_size)
+    self.fc2 = nn.Linear(3 * hidden_size, 3 * hidden_size)
+    self.fc3 = nn.Linear(3 * hidden_size, 3 * hidden_size)
+    self.fc4 = nn.Linear(3 * hidden_size, 3 * hidden_size)
+    self.fc5 = nn.Linear(3 * hidden_size, 1)
   
   def forward(self):
-    z = self.z.view(1, self.latent_size, 1, 1) * torch.randn(64, self.latent_size, 1, 1)
-    x = F.relu(self.conv1(z))
-    x = F.relu(self.conv2(x))
-    x = F.relu(self.att3(self.conv3(x)))
-    x = F.relu(self.conv4(x))
-    return torch.sigmoid(self.conv5(x))
+    batch_size = 64
+    z = self.z.view(1, self.latent_size, 1, 1) * torch.randn(batch_size, self.latent_size, 1, 1)
+    z = torch.cat([z.expand(batch_size, self.latent_size, self.height, self.width), self.coordinates.expand(batch_size, 2, self.height, self.width)], dim=1).permute(0, 2, 3, 1)
+    x = relu_sin_tanh(self.fc1(z))
+    x = relu_sin_tanh(self.fc2(x))
+    x = relu_sin_tanh(self.fc3(x))
+    x = relu_sin_tanh(self.fc4(x))
+    return torch.sigmoid(self.fc5(x)).permute(0, 3, 1, 2)
 
 
 class Discriminator(nn.Module):
