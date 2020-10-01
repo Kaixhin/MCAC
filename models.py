@@ -45,12 +45,12 @@ class Generator(nn.Module):
     super().__init__()
     self.age = 0
 
-    self.height, self.width = 64, 64
-    x_grid, y_grid = torch.meshgrid(torch.linspace(-3, 3, self.width), torch.linspace(-3, 3, self.height))
-    self.register_buffer('coordinates', torch.stack([x_grid, y_grid]).unsqueeze(dim=0))
+    self.timesteps = 20
+    self.register_buffer('timestep_embeddings', torch.linspace(-3, -3, self.timesteps).view(1, self.timesteps, 1))
+    self.register_buffer('action_scale', torch.tensor([[1023., 1023., 1., 9., 5., 19., 19., 19.]]))
     self.latent_size = latent_size
     self.z = nn.Parameter(torch.randn(latent_size))
-    self.fc1 = nn.Linear(latent_size + 2, 3 * hidden_size)
+    self.fc1 = nn.Linear(latent_size + 1, 3 * hidden_size)
     self.fc2 = nn.Linear(3 * hidden_size, 3 * hidden_size)
     self.fc3 = nn.Linear(3 * hidden_size, 3 * hidden_size)
     self.fc4 = nn.Linear(3 * hidden_size, 3 * hidden_size)
@@ -58,13 +58,13 @@ class Generator(nn.Module):
   
   def forward(self):
     batch_size = 64
-    z = self.z.view(1, self.latent_size, 1, 1) * torch.randn(batch_size, self.latent_size, 1, 1)
-    z = torch.cat([z.expand(batch_size, self.latent_size, self.height, self.width), self.coordinates.expand(batch_size, 2, self.height, self.width)], dim=1).permute(0, 2, 3, 1)
+    z = self.z.view(1, 1, self.latent_size) * torch.randn(batch_size, self.timesteps, self.latent_size)
+    z = torch.cat([z, self.timestep_embeddings.expand(batch_size, self.timesteps, 1)], dim=2)
     x = relu_sin_tanh(self.fc1(z))
     x = relu_sin_tanh(self.fc2(x))
     x = relu_sin_tanh(self.fc3(x))
     x = relu_sin_tanh(self.fc4(x))
-    return torch.sigmoid(self.fc5(x)).permute(0, 3, 1, 2)
+    return torch.round(torch.sigmoid(self.fc5(x)) * self.action_scale).to(dtype=torch.int64).numpy()
 
 
 class Discriminator(nn.Module):
@@ -73,7 +73,7 @@ class Discriminator(nn.Module):
     self.age = 0
     self.usage = 0
 
-    self.conv1 = CoordConv2d(1, hidden_size, 4, 64, 64, stride=2, padding=1, bias=False)
+    self.conv1 = CoordConv2d(3, hidden_size, 4, 64, 64, stride=2, padding=1, bias=False)
     self.conv2 = nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.conv3 = nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.att3 = SelfAttention2d(4 * hidden_size)

@@ -1,6 +1,7 @@
 from collections import deque
 from copy import deepcopy
 import numpy as np
+from spiral.envs import LibMyPaint
 import torch
 from torchvision.utils import save_image
 
@@ -10,13 +11,26 @@ from models import Discriminator
 I = 0
 
 
+def paint(batch_actions):
+  imgs = []
+  for actions in batch_actions:
+    env = LibMyPaint()
+    env.configure()
+    env.reset()
+    for action in actions:
+      obs, _, _, _ = env.step(action)
+    imgs.append(torch.tensor(obs['canvas']) / 255)
+  return torch.stack(imgs).permute(0, 3, 1, 2)
+
+
 def evaluate_mc(generator, discriminator):
   global I
   I += 1
   with torch.no_grad():
-    img = generator()
-    mc_satisfied = discriminator(img).std().item() > 0.3
-    if mc_satisfied: save_image(img, f'results/{I}.png')
+    actions = generator()
+    imgs = paint(actions)
+    mc_satisfied = discriminator(imgs).std().item() > 0.3
+    if mc_satisfied: save_image(imgs, f'results/{I}.png')
     return mc_satisfied
 
 
