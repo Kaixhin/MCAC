@@ -15,8 +15,8 @@ def paint(batch_actions):
   imgs = []
   for actions in batch_actions:
     env = LibMyPaint()
-    env.configure()
-    env.reset()
+    env.configure(brushes_basedir='mypaint-brushes-1.3.0')
+    obs = env.reset()
     for action in actions:
       obs, _, _, _ = env.step(action)
     imgs.append(torch.tensor(obs['canvas']) / 255)
