@@ -81,8 +81,8 @@ class Generator(nn.Module):
     self.block3 = StyleGANBlock(hidden_size)  # 16x16
     self.block4 = StyleGANBlock(hidden_size)  # 32x32
     self.block5 = StyleGANBlock(hidden_size)  # 64x64
-    self.conv = nn.Conv2d(hidden_size, 1, 5, padding=2)
-  
+    self.conv = nn.Conv2d(hidden_size, 3, 5, padding=2)
+
   def forward(self):
     w = self.mapping(self.z)
     x = self.block1(w=w)
@@ -99,7 +99,7 @@ class Discriminator(nn.Module):
     self.age = 0
     self.usage = 0
 
-    self.conv1 = CoordConv2d(1, hidden_size, 4, 64, 64, stride=2, padding=1, bias=False)
+    self.conv1 = CoordConv2d(3, hidden_size, 4, 64, 64, stride=2, padding=1, bias=False)
     self.conv2 = nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.conv3 = nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.att3 = SelfAttention2d(4 * hidden_size)
