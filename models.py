@@ -73,19 +73,16 @@ class Discriminator(nn.Module):
     self.age = 0
     self.usage = 0
 
-    self.conv1 = CoordConv2d(3, hidden_size, 4, 64, 64, stride=2, padding=1, bias=False)
-    self.conv2 = nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False)
-    self.conv3 = nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False)
-    self.att3 = SelfAttention2d(4 * hidden_size)
-    self.conv4 = nn.Conv2d(4 * hidden_size, 8 * hidden_size, 4, stride=2, padding=1, bias=False)
-    self.conv5 = nn.Conv2d(8 * hidden_size, 1, 4, stride=1, padding=0, bias=False)
+    self.conv1 = nn.Conv1d(100, hidden_size, 4, stride=2, padding=1)
+    self.conv2 = nn.Conv1d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1)
+    self.conv3 = nn.Conv1d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1)
+    self.conv4 = nn.Conv1d(4 * hidden_size, 1, 3, stride=1, padding=0)
 
   def forward(self, x):
-    x = F.leaky_relu(self.conv1(x), 0.2)
+    x = F.leaky_relu(self.conv1(x.squeeze(dim=1)), 0.2)
     x = F.leaky_relu(self.conv2(x), 0.2)
-    x = F.leaky_relu(self.att3(self.conv3(x)), 0.2)
-    x = F.leaky_relu(self.conv4(x), 0.2)
-    return torch.sigmoid(self.conv5(x)).view(-1)
+    x = F.leaky_relu(self.conv3(x), 0.2)
+    return torch.sigmoid(self.conv4(x)).view(-1)
 
 
 def generate_random_population(pop_size):

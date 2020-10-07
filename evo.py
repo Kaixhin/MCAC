@@ -12,30 +12,23 @@ from models import Discriminator
 I = 0
 
 
-def compose(batch_actions):
-  songs = []
-  for actions in batch_actions:
-    print(actions)
-    print(actions.shape)
-    quit()
-    """
-    env = LibMyPaint()
-    env.configure(brushes_basedir='mypaint-brushes-1.3.0')
-    obs = env.reset()
-    for action in actions:
-      obs, _, _, _ = env.step(action)
-    imgs.append(torch.tensor(obs['canvas']) / 255)
-    """
-  return torch.stack(imgs).permute(0, 3, 1, 2)
+def visualise_songs(songs):
+  canvas = torch.ones(songs.size(0), 1, 100, 25)  # Pitch x timesteps
+  for n, song in enumerate(songs):
+    for t, note in enumerate(song):
+      _, pitch, velocity, duration = note
+      canvas[n, :, pitch, t:t + duration] = 1 - velocity.item() / 200
+  return canvas
 
 
-def save_song(songs, visual_songs):
+def save_song(songs, song_plots):
   global I
   for n, song in enumerate(songs):
     os.makedirs(f'results/{I}', exist_ok=True)
     midi = MIDITime(130, f'results/{I}/{n}.mid')  # Save file at 130 BPM
     midi.add_track(song.numpy())
     midi.save_midi()
+  save_image(song_plots, f'results/{I}/plots.png')
 
 
 def evaluate_mc(generator, discriminator):
@@ -45,10 +38,9 @@ def evaluate_mc(generator, discriminator):
   with torch.no_grad():
     songs = generator()
     songs = torch.cat([torch.linspace(0, timesteps - 1, timesteps, dtype=torch.int64).view(1, timesteps, 1).expand(songs.size(0), songs.size(1), 1), songs], dim=2)  # Add time
-    save_song(songs, None)
-    visual_songs = visualise_song(songs)
-    mc_satisfied = discriminator(visual_songs).std().item() > 0.3
-    if mc_satisfied: save_song(songs, visual_songs)
+    song_plots = visualise_songs(songs)
+    mc_satisfied = discriminator(song_plots).std().item() > 0.3
+    if mc_satisfied: save_song(songs, song_plots)
     return mc_satisfied
 
 
