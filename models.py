@@ -47,7 +47,7 @@ class Generator(nn.Module):
 
     self.timesteps = 20
     self.register_buffer('timestep_embeddings', torch.linspace(-3, -3, self.timesteps).view(1, self.timesteps, 1))
-    self.register_buffer('action_scale', torch.tensor([[1023., 1023., 1., 9., 5., 19., 19., 19.]]))
+    self.register_buffer('action_scale', torch.tensor([[99., 199., 4.]]))  # Pitch, velocity, duration
     self.latent_size = latent_size
     self.z = nn.Parameter(torch.randn(latent_size))
     self.fc1 = nn.Linear(latent_size + 1, 3 * hidden_size)
@@ -64,7 +64,7 @@ class Generator(nn.Module):
     x = relu_sin_tanh(self.fc2(x))
     x = relu_sin_tanh(self.fc3(x))
     x = relu_sin_tanh(self.fc4(x))
-    return torch.round(torch.sigmoid(self.fc5(x)) * self.action_scale).to(dtype=torch.int64).numpy()
+    return torch.round(torch.sigmoid(self.fc5(x)) * self.action_scale).to(dtype=torch.int64)
 
 
 class Discriminator(nn.Module):
