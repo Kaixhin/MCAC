@@ -11,7 +11,7 @@ class CoordConv2d(nn.Conv2d):
     self.register_buffer('coordinates', torch.stack([x_grid, y_grid]).unsqueeze(dim=0))
 
   def forward(self, x):
-    x = torch.cat([x, self.coordinates.expand(x.size(0), 2, self.height, self.width)], dim=1)  # Concatenate spatial embeddings TODO: radius?
+    x = torch.cat([x, self.coordinates.expand(x.size(0), 2, self.height, self.width)], dim=1)  # Concatenate spatial embeddings
     return super().forward(x)
 
 
@@ -36,7 +36,7 @@ class SelfAttention2d(nn.Module):
 
 
 class Generator(nn.Module):
-  def __init__(self, latent_size, hidden_size=8):
+  def __init__(self, latent_size=10, hidden_size=8):
     super().__init__()
     self.age = 0
 
@@ -80,4 +80,4 @@ class Discriminator(nn.Module):
 
 
 def generate_random_population(pop_size):
-  return [Generator(10) for _ in range(pop_size)] + [Discriminator() for _ in range(pop_size)]
+  return [Generator() for _ in range(pop_size)] + [Discriminator() for _ in range(pop_size)]

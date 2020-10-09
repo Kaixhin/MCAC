@@ -7,16 +7,11 @@ from torchvision.utils import save_image
 from models import Discriminator
 
 
-I = 0
-
-
-def evaluate_mc(generator, discriminator):
-  global I
-  I += 1
+def evaluate_mc(generator, discriminator, threshold, num_evaluations):
   with torch.no_grad():
     img = generator()
-    mc_satisfied = discriminator(img).std().item() > 0.3
-    if mc_satisfied: save_image(img, f'results/{I}.png')
+    mc_satisfied = discriminator(img).std().item() > threshold
+    if mc_satisfied: save_image(img, f'results/{num_evaluations}.png')
     return mc_satisfied
 
 
@@ -30,13 +25,13 @@ def remove_oldest(viable_pop, num_removals):
   return deque([viable_pop[i] for i in youngest[:len(viable_pop) - num_removals]])
 
 
-def reproduce(parents):
+def reproduce(parents, mutation_rate):
   children = []
   for parent in parents:
     child = deepcopy(parent)
     child.age = 0
     if isinstance(child, Discriminator): child.usage = 0
     for parameter in child.parameters():
-      parameter.data.add_(0.2 * torch.randn_like(parameter.data))
+      parameter.data.add_(mutation_rate * torch.randn_like(parameter.data))
     children.append(child)
   return children
