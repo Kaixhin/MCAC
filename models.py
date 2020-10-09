@@ -54,7 +54,7 @@ class Generator(nn.Module):
     self.fc2 = nn.Linear(3 * hidden_size, 3 * hidden_size)
     self.fc3 = nn.Linear(3 * hidden_size, 3 * hidden_size)
     self.fc4 = nn.Linear(3 * hidden_size, 3 * hidden_size)
-    self.fc5 = nn.Linear(3 * hidden_size, 1)
+    self.fc5 = nn.Linear(3 * hidden_size, 8)
   
   def forward(self):
     batch_size = 64
