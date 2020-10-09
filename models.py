@@ -3,6 +3,13 @@ from torch import nn
 from torch.nn import functional as F
 
 
+def adaptive_instance_norm_2d(x, y):
+  ys, yb = y.chunk(2, dim=1)
+  x = (x - x.mean(dim=(-1, -2), keepdim=True)) / (x.std(dim=(-1, -2), keepdim=True) + 1e-8)  # Normalisation
+  x = ys.view(-1, x.size(1), 1, 1) * x + yb.view(-1, x.size(1), 1, 1)
+  return x
+
+
 class CoordConv2d(nn.Conv2d):
   def __init__(self, in_channels, out_channels, kernel_size, height, width, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
     super().__init__(in_channels + 2, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, padding_mode=padding_mode)
@@ -35,27 +42,55 @@ class SelfAttention2d(nn.Module):
     return y
 
 
+class StyleGANBlock(nn.Module):
+  def __init__(self, hidden_size, upsample=True):
+    super().__init__()
+    if upsample:
+      self.conv1 = nn.Conv2d(hidden_size, hidden_size, 3, padding=1)
+    else:
+      self.base = nn.Parameter(torch.randn(64, hidden_size, 4, 4))
+    self.B1 = nn.Parameter(torch.tensor([0.01]))
+    self.A1 = nn.Linear(hidden_size, 2 * hidden_size)
+    self.conv2 = nn.Conv2d(hidden_size, hidden_size, 3, padding=1)
+    self.B2 = nn.Parameter(torch.tensor([0.01]))
+    self.A2 = nn.Linear(hidden_size, 2 * hidden_size)
+
+  def forward(self, x=None, w=None):
+    if hasattr(self, 'base'):
+      x = self.base
+    else:
+      x = F.relu(self.conv1(F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)))
+    x = x + self.B1 * torch.randn_like(x)
+    x = adaptive_instance_norm_2d(x, self.A1(w))
+    x = F.relu(self.conv2(x))
+    x = x + self.B2 * torch.randn_like(x)
+    x = adaptive_instance_norm_2d(x, self.A2(w))
+    return x
+
+
 class Generator(nn.Module):
   def __init__(self, latent_size=10, hidden_size=8):
     super().__init__()
     self.age = 0
 
     self.latent_size = latent_size
-    self.z = nn.Parameter(torch.randn(latent_size))
-    self.conv1 = nn.ConvTranspose2d(latent_size, 8 * hidden_size, 4, stride=1, padding=0, bias=False)
-    self.conv2 = nn.ConvTranspose2d(8 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False)
-    self.conv3 = nn.ConvTranspose2d(4 * hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False)
-    self.att3 = SelfAttention2d(2 * hidden_size)
-    self.conv4 = nn.ConvTranspose2d(2 * hidden_size, hidden_size, 4, stride=2, padding=1, bias=False)
-    self.conv5 = nn.ConvTranspose2d(hidden_size, 1, 4, stride=2, padding=1)
-  
+    self.z = nn.Parameter(torch.randn(64, latent_size))
+    self.mapping = nn.Sequential(nn.Linear(latent_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size))
+    self.block1 = StyleGANBlock(hidden_size, upsample=False)  # 4x4
+    self.block2 = StyleGANBlock(hidden_size)  # 8x8
+    self.block3 = StyleGANBlock(hidden_size)  # 16x16
+    self.block4 = StyleGANBlock(hidden_size)  # 32x32
+    self.block5 = StyleGANBlock(hidden_size)  # 64x64
+    self.conv = nn.Conv2d(hidden_size, 3, 5, padding=2)
+
   def forward(self):
-    z = self.z.view(1, self.latent_size, 1, 1) * torch.randn(64, self.latent_size, 1, 1)
-    x = F.relu(self.conv1(z))
-    x = F.relu(self.conv2(x))
-    x = F.relu(self.att3(self.conv3(x)))
-    x = F.relu(self.conv4(x))
-    return torch.sigmoid(self.conv5(x))
+    w = self.mapping(self.z)
+    x = self.block1(w=w)
+    x = self.block2(x, w)
+    x = self.block3(x, w)
+    x = self.block4(x, w)
+    x = self.block5(x, w)
+    return torch.sigmoid(self.conv(x))
 
 
 class Discriminator(nn.Module):
@@ -64,7 +99,7 @@ class Discriminator(nn.Module):
     self.age = 0
     self.usage = 0
 
-    self.conv1 = CoordConv2d(1, hidden_size, 4, 64, 64, stride=2, padding=1, bias=False)
+    self.conv1 = CoordConv2d(3, hidden_size, 4, 64, 64, stride=2, padding=1, bias=False)
     self.conv2 = nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.conv3 = nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.att3 = SelfAttention2d(4 * hidden_size)
