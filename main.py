@@ -18,9 +18,11 @@ parser.add_argument('--num-seeds', type=int, default=5, metavar='SEEDS', help='N
 parser.add_argument('--viable-pop-capacity', type=int, default=200, metavar='CAPACITY', help='Viable population capacity')
 parser.add_argument('--max-epochs', type=int, default=500, metavar='EPOCHS', help='Max number of epochs')
 parser.add_argument('--batch-size', type=int, default=64, metavar='SIZE', help='Number of individuals to evaluate simultaneously')
-parser.add_argument('--criterion-threshold', type=float, default=0.3, metavar='THRESHOLD', help='Criterion threshold')
 parser.add_argument('--resource-limit', type=int, default=5, metavar='LIMIT', help='Max number of evaluations that count towards MC')
 parser.add_argument('--mutation-rate', type=float, default=0.2, metavar='MUTATION', help='Mutation rate')
+parser.add_argument('--criterion-threshold', type=float, default=0.3, metavar='THRESHOLD', help='Criterion threshold')
+parser.add_argument('--latent-size', type=int, default=128, metavar='LATENT', help='Latent size')
+parser.add_argument('--adversarial-batch-size', type=int, default=64, metavar='BATCH', help='Adversarial training batch size')
 args = parser.parse_args()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.manual_seed(args.seed)
@@ -29,8 +31,8 @@ torch.cuda.manual_seed_all(args.seed)
 
 if __name__ == '__main__':
   # Evolve seed genomes that satisfy MC
-  rand_pop = generate_random_population(args.generator, args.initial_pop)
-  viable_pop = deque(evolve_seed_genomes(rand_pop, args.num_seeds, device))
+  rand_pop = generate_random_population(args.generator, args.initial_pop, args.latent_size)
+  viable_pop = deque(evolve_seed_genomes(rand_pop, args.num_seeds, args.latent_size, args.adversarial_batch_size, device))
 
 
   num_evaluations = 0
