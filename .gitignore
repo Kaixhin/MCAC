@@ -128,5 +128,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Data
+data/celeba/img_align_celeba.zip
+data/celeba/img_align_celeba/*.jpg
 # Results
 results/*.png
