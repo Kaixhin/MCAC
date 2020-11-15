@@ -21,13 +21,12 @@ def evaluate_mc(generator, discriminator, threshold, num_evaluations):
     return mc_satisfied
 
 
-I = 0
-def _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader):
-  global I
-  for real_data in dataloader:
+def _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, epoch, device):
+  for i, real_data in enumerate(dataloader):
+    print(i)
     # Train discriminator on real data
     discriminator_optimiser.zero_grad()
-    D_real = discriminator(real_data[0])
+    D_real = discriminator(real_data[0].to(device=device))
     real_loss = F.binary_cross_entropy(D_real, torch.ones_like(D_real))  # Loss on real data
     autograd.backward(real_loss, create_graph=True)
     # R1 gradient penalty on real data
@@ -48,20 +47,29 @@ def _adversarial_training(generator, discriminator, generator_optimiser, discrim
     generator_loss = F.binary_cross_entropy(D_fake, torch.ones_like(D_fake))
     generator_loss.backward()
     generator_optimiser.step()
-    print(real_loss.item(), fake_loss.item(), generator_loss.item())
-    if I % 25 == 0: save_image(fake_data, f'results/{I}.png')
-    I += 1
+    if i % 25 == 0:
+      print(epoch, i, real_loss.item(), fake_loss.item(), generator_loss.item())
+      save_image(fake_data, f'results/{epoch}_{i}.png')
 
 
-def evolve_seed_genomes(rand_pop, num_seeds):
+def evolve_seed_genomes(rand_pop, num_seeds, device):
   # Train a single generator and discriminator with standard GAN training + R1 grad penalty
   generator, discriminator = rand_pop[0], rand_pop[-1]  # TODO: Assumes first half of queue is generators and second half is discriminators
+  generator.to(device=device)
+  discriminator.to(device=device)
   generator_optimiser, discriminator_optimiser = Adam(generator.parameters(), lr=1e-4), Adam(discriminator.parameters(), lr=1e-4)
+
   dataset = CelebA(root='data', transform=transforms.Compose([transforms.CenterCrop(178), transforms.Resize(64), transforms.ToTensor()]), download=True)
-  dataloader = DataLoader(dataset, batch_size=128, shuffle=True, drop_last=True, num_workers=4)
-  for _ in range(10):
-    _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader)
+  dataloader = DataLoader(dataset, batch_size=128, shuffle=True, drop_last=True, num_workers=6)
+
+  epoch = 0
+  while True:
+    _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, epoch, device)
+    epoch += 1
+    torch.save(generator.state_dict(), 'models/generator_{epoch}.pth')
+    torch.save(discriminator.state_dict(), 'models/discriminator_{epoch}.pth')
   quit()
+
   return rand_pop
 
 

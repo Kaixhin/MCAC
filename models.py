@@ -3,6 +3,12 @@ from torch import nn
 from torch.nn import functional as F
 
 
+def _orthogonal_init(module):
+  if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d):
+    nn.init.orthogonal_(module.weight)
+    if module.bias is not None: nn.init.constant_(module.bias, 0.)
+
+
 def adaptive_instance_norm_2d(x, y):
   ys, yb = y.chunk(2, dim=1)
   x = (x - x.mean(dim=(-1, -2), keepdim=True)) / (x.std(dim=(-1, -2), keepdim=True) + 1e-8)  # Normalisation
@@ -92,9 +98,10 @@ class StyleGANGenerator(Generator):
     self.block4 = StyleGANBlock(hidden_size)  # 32x32
     self.block5 = StyleGANBlock(hidden_size)  # 64x64
     self.conv = nn.Conv2d(hidden_size, 3, 5, padding=2)
+    self.apply(_orthogonal_init)
 
   def forward(self):
-    w = self.mapping(self.z)
+    w = self.mapping(self.z * torch.randn_like(self.z))
     x = self.block1(w=w)
     x = self.block2(x, w)
     x = self.block3(x, w)
@@ -118,6 +125,7 @@ class CPPNGenerator(Generator):
     self.fc3 = nn.Linear(3 * hidden_size, 3 * hidden_size)
     self.fc4 = nn.Linear(3 * hidden_size, 3 * hidden_size)
     self.fc5 = nn.Linear(3 * hidden_size, 3)
+    self.apply(_orthogonal_init)
 
   def forward(self):
     batch_size = 64
@@ -142,6 +150,7 @@ class Discriminator(nn.Module):
     self.att3 = SelfAttention2d(4 * hidden_size)
     self.conv4 = nn.Conv2d(4 * hidden_size, 8 * hidden_size, 4, stride=2, padding=1, bias=False)
     self.conv5 = nn.Conv2d(8 * hidden_size, 1, 4, stride=1, padding=0, bias=False)
+    self.apply(_orthogonal_init)
 
   def forward(self, x):
     x = F.leaky_relu(self.conv1(x), 0.2)
