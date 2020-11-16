@@ -28,8 +28,8 @@ def _adversarial_training(generator, discriminator, generator_optimiser, discrim
     discriminator_optimiser.zero_grad()
     fake_data = generator(torch.randn(real_data[0].size(0), latent_size, device=device))
     D_real, D_fake = discriminator(real_data[0].to(device=device)), discriminator(fake_data.detach())
-    hinge_loss = torch.max(1 - D_real, 0)[0].mean() + torch.max(1 + D_fake, 0)[0].mean()
-    hinge_loss.backward()
+    discriminator_loss = F.binary_cross_entropy_with_logits(D_real, torch.ones_like(D_real)) + F.binary_cross_entropy_with_logits(D_fake, torch.zeros_like(D_fake))
+    discriminator_loss.backward()
     discriminator_optimiser.step()
 
     # Train generator
@@ -39,7 +39,7 @@ def _adversarial_training(generator, discriminator, generator_optimiser, discrim
     generator_loss.backward()
     generator_optimiser.step()
     if i % 500 == 0:
-      print(epoch, i, hinge_loss.item(), generator_loss.item())
+      print(epoch, i, discriminator_loss.item(), generator_loss.item())
       save_image(fake_data, f'results/{epoch}_{i}.png')
 
 
@@ -50,7 +50,7 @@ def evolve_seed_genomes(rand_pop, num_seeds, latent_size, batch_size, device):
   discriminator.to(device=device)
   generator_optimiser, discriminator_optimiser = Adam(generator.parameters(), lr=1e-4), Adam(discriminator.parameters(), lr=1e-4)
 
-  dataset = CelebA(root='data', transform=transforms.Compose([transforms.ToTensor(), jit.script(nn.Sequential(transforms.Resize([64]), transforms.CenterCrop(64)))]), download=True)
+  dataset = CelebA(root='data', transform=transforms.Compose([transforms.ToTensor(), nn.Sequential(transforms.Resize([64]), transforms.CenterCrop(64))]), download=True)
   dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=6)
 
   epoch = 0
