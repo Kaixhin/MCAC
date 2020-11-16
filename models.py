@@ -1,5 +1,6 @@
+from typing import Optional
 import torch
-from torch import nn
+from torch import jit, nn
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm
 
@@ -35,12 +36,13 @@ class CoordConv2d(nn.Conv2d):
 
 
 class SelfAttention2d(nn.Module):
-  def __init__(self, in_channels):
+  def __init__(self, in_channels, normalise=False):
     super().__init__()
     self.att_channels = in_channels // 8
     self.Wf = nn.Conv2d(in_channels, self.att_channels, 1, padding=0)
     self.Wg = nn.Conv2d(in_channels, self.att_channels, 1, padding=0)
     self.Wh = nn.Conv2d(in_channels, in_channels, 1, padding=0)
+    if normalise: self.Wf, self.Wg, self.Wh = spectral_norm(self.Wf), spectral_norm(self.Wg), spectral_norm(self.Wh)
     self.gamma = nn.Parameter(torch.zeros(1))  # Initialise attention at 0
 
   def forward(self, x):
@@ -67,11 +69,11 @@ class StyleGANBlock(nn.Module):
     self.B2 = nn.Parameter(torch.tensor([0.01]))
     self.A2 = nn.Linear(hidden_size, 2 * hidden_size)
 
-  def forward(self, x=None, w=None):
+  def forward(self, w: torch.Tensor, x: Optional[torch.Tensor]=None):
     if hasattr(self, 'base'):
       x = self.base
-    else:
-      x = F.relu(self.conv1(F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)))
+    elif x is not None and hasattr(self, 'conv1'):
+      x = F.relu(self.conv1(F.interpolate(x, scale_factor=2.0, mode='bilinear', align_corners=True)))
     x = x + self.B1 * torch.randn_like(x)
     x = adaptive_instance_norm_2d(x, self.A1(w))
     x = F.relu(self.conv2(x))
@@ -86,7 +88,7 @@ class Generator(nn.Module):
 
 
 class StyleGANGenerator(Generator):
-  def __init__(self, latent_size, hidden_size=8):
+  def __init__(self, latent_size, hidden_size=64):
     super().__init__()
     self.age = 0
 
@@ -102,16 +104,16 @@ class StyleGANGenerator(Generator):
 
   def forward(self, z):
     w = self.mapping(z)
-    x = self.block1(w=w)
-    x = self.block2(x, w)
-    x = self.block3(x, w)
-    x = self.block4(x, w)
-    x = self.block5(x, w)
+    x = self.block1(w)
+    x = self.block2(w, x)
+    x = self.block3(w, x)
+    x = self.block4(w, x)
+    x = self.block5(w, x)
     return torch.sigmoid(self.conv(x))
 
 
 class CPPNGenerator(Generator):
-  def __init__(self, latent_size, hidden_size=8):
+  def __init__(self, latent_size, hidden_size=64):
     super().__init__()
     self.age = 0
 
@@ -136,31 +138,33 @@ class CPPNGenerator(Generator):
 
 
 class Discriminator(nn.Module):
-  def __init__(self, hidden_size=8):
+  def __init__(self, hidden_size=64):
     super().__init__()
-    self.age = 0
-    self.usage = 0
+    self.age, self.usage = 0, 0
 
-    self.conv1 = CoordConv2d(3, hidden_size, 4, 64, 64, stride=2, padding=1)
-    self.conv2 = nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1)
-    self.conv3 = nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1)
-    self.att3 = SelfAttention2d(4 * hidden_size)
-    self.conv4 = nn.Conv2d(4 * hidden_size, 8 * hidden_size, 4, stride=2, padding=1)
-    self.conv5 = nn.Conv2d(8 * hidden_size, 1, 4, stride=1, padding=0)
+    self.conv1 = spectral_norm(CoordConv2d(3, hidden_size, 4, 64, 64, stride=2, padding=1))
+    self.conv2 = spectral_norm(nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False))
+    self.in2 = nn.InstanceNorm2d(2 * hidden_size)
+    self.conv3 = spectral_norm(nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False))
+    self.in3 = nn.InstanceNorm2d(4 * hidden_size)
+    self.att3 = SelfAttention2d(4 * hidden_size, normalise=True)
+    self.conv4 = spectral_norm(nn.Conv2d(4 * hidden_size, 8 * hidden_size, 4, stride=2, padding=1, bias=False))
+    self.in4 = nn.InstanceNorm2d(8 * hidden_size)
+    self.conv5 = spectral_norm(nn.Conv2d(8 * hidden_size, 1, 4, stride=1, padding=0))
     self.apply(_weight_init)
-    self.conv1, self.conv2, self.conv3, self.conv4, self.conv5 = spectral_norm(self.conv1), spectral_norm(self.conv2), spectral_norm(self.conv3), spectral_norm(self.conv4), spectral_norm(self.conv5)
 
   def forward(self, x):
     x = F.leaky_relu(self.conv1(x), 0.2)
-    x = F.leaky_relu(self.conv2(x), 0.2)
-    x = F.leaky_relu(self.att3(self.conv3(x)), 0.2)
-    x = F.leaky_relu(self.conv4(x), 0.2)
+    x = F.leaky_relu(self.in2(self.conv2(x)), 0.2)
+    x = F.leaky_relu(self.in3(self.conv3(x)), 0.2)
+    x = self.att3(x)
+    x = F.leaky_relu(self.in4(self.conv4(x)), 0.2)
     return self.conv5(x).view(-1)
 
 
-def generate_random_population(generator, pop_size, latent_size):
+def generate_random_population(generator, pop_size, latent_size, hidden_size):
   if generator == 'StyleGAN':
     G = StyleGANGenerator
   elif generator == 'CPPN':
     G = CPPNGenerator
-  return [G(latent_size) for _ in range(pop_size)] + [Discriminator() for _ in range(pop_size)]
+  return [G(latent_size, hidden_size) for _ in range(pop_size)] + [Discriminator(hidden_size) for _ in range(pop_size)]

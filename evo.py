@@ -2,7 +2,7 @@ from collections import deque
 from copy import deepcopy
 import numpy as np
 import torch
-from torch import autograd
+from torch import autograd, jit, nn
 from torch.nn import functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -23,11 +23,11 @@ def evaluate_mc(generator, discriminator, threshold, num_evaluations):
 
 def _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, device):
   for i, real_data in enumerate(dataloader):
+    print(i)
     # Train discriminator
     discriminator_optimiser.zero_grad()
-    D_real = discriminator(real_data[0].to(device=device))
     fake_data = generator(torch.randn(real_data[0].size(0), latent_size, device=device))
-    D_fake = discriminator(fake_data.detach())
+    D_real, D_fake = discriminator(real_data[0].to(device=device)), discriminator(fake_data.detach())
     hinge_loss = torch.max(1 - D_real, 0)[0].mean() + torch.max(1 + D_fake, 0)[0].mean()
     hinge_loss.backward()
     discriminator_optimiser.step()
@@ -50,7 +50,7 @@ def evolve_seed_genomes(rand_pop, num_seeds, latent_size, batch_size, device):
   discriminator.to(device=device)
   generator_optimiser, discriminator_optimiser = Adam(generator.parameters(), lr=1e-4), Adam(discriminator.parameters(), lr=1e-4)
 
-  dataset = CelebA(root='data', transform=transforms.Compose([transforms.CenterCrop(178), transforms.Resize(64), transforms.ToTensor()]), download=True)
+  dataset = CelebA(root='data', transform=transforms.Compose([transforms.ToTensor(), jit.script(nn.Sequential(transforms.Resize([64]), transforms.CenterCrop(64)))]), download=True)
   dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=6)
 
   epoch = 0
