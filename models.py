@@ -6,7 +6,7 @@ from torch.nn.utils import spectral_norm
 
 
 def _weight_init(module):
-  if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d):
+  if isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d):
     nn.init.normal_(module.weight, 0, 0.02)
     if module.bias is not None: nn.init.constant_(module.bias, 0)
 
@@ -63,7 +63,7 @@ class StyleGANBlock(nn.Module):
       self.conv1 = nn.Conv2d(input_size, input_size, 3, padding=1)
     else:
       self.base = nn.Parameter(torch.randn(1, input_size, 4, 4))
-    self.B1 = nn.Parameter(torch.tensor([0.01]))
+    self.B1 = nn.Parameter(torch.full((1, input_size, 1, 1), 0.01))
     self.A1 = nn.Linear(latent_size, 2 * input_size)
     self.conv2 = nn.Conv2d(input_size, output_size, 3, padding=1)
 
@@ -90,20 +90,20 @@ class DCGANGenerator(nn.Module):
 
     self.conv1 = nn.ConvTranspose2d(latent_size, 8 * hidden_size, 4, stride=1, padding=0)
     self.conv2 = nn.ConvTranspose2d(8 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1)
-    self.in2 = nn.InstanceNorm2d(4 * hidden_size)
+    self.in2 = nn.InstanceNorm2d(4 * hidden_size, affine=True)
     self.conv3 = nn.ConvTranspose2d(4 * hidden_size, 2 * hidden_size, 4, stride=2, padding=1)
-    self.in3 = nn.InstanceNorm2d(2 * hidden_size)
+    self.in3 = nn.InstanceNorm2d(2 * hidden_size, affine=True)
     self.conv4 = nn.ConvTranspose2d(2 * hidden_size, hidden_size, 4, stride=2, padding=1)
-    self.in4 = nn.InstanceNorm2d(hidden_size)
+    self.in4 = nn.InstanceNorm2d(hidden_size, affine=True)
     self.conv5 = nn.ConvTranspose2d(hidden_size, 3, 4, stride=2, padding=1)
     self.apply(_weight_init)
 
   def forward(self, x):
-    x = F.relu(self.conv1(x.view(x.size(0), x.size(1), 1, 1)))
-    x = F.relu(self.in2(self.conv2(x)))
-    x = F.relu(self.in3(self.conv3(x)))
-    x = F.relu(self.in4(self.conv4(x)))
-    return torch.tanh(self.conv5(x)) / 2 + 0.5
+    x = F.relu(self.conv1(x.view(x.size(0), x.size(1), 1, 1)))  # 4x4
+    x = F.relu(self.in2(self.conv2(x)))  # 8x8
+    x = F.relu(self.in3(self.conv3(x)))  # 16x16
+    x = F.relu(self.in4(self.conv4(x)))  # 32x32
+    return torch.tanh(self.conv5(x)) / 2 + 0.5  # 64x64
 
 
 class StyleGANGenerator(Generator):
@@ -113,7 +113,7 @@ class StyleGANGenerator(Generator):
 
     self.latent_size = latent_size
     # self.mapping = nn.Sequential(nn.Linear(latent_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size))
-    self.block1 = StyleGANBlock(16 * hidden_size, 8 * hidden_size, latent_size, upsample=False)  # 4x4
+    self.block1 = StyleGANBlock(8 * hidden_size, 8 * hidden_size, latent_size, upsample=False)  # 4x4
     self.block2 = StyleGANBlock(8 * hidden_size, 4 * hidden_size, latent_size)  # 8x8
     self.block3 = StyleGANBlock(4 * hidden_size, 2 * hidden_size, latent_size)  # 16x16
     self.block4 = StyleGANBlock(2 * hidden_size, hidden_size, latent_size)  # 32x32
@@ -163,12 +163,12 @@ class Discriminator(nn.Module):
 
     self.conv1 = spectral_norm(nn.Conv2d(3, hidden_size, 4, stride=2, padding=1))
     self.conv2 = spectral_norm(nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1))
-    self.in2 = nn.InstanceNorm2d(2 * hidden_size)
+    self.in2 = nn.InstanceNorm2d(2 * hidden_size, affine=True)
     self.conv3 = spectral_norm(nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1))
-    self.in3 = nn.InstanceNorm2d(4 * hidden_size)
+    self.in3 = nn.InstanceNorm2d(4 * hidden_size, affine=True)
     # self.att3 = SelfAttention2d(4 * hidden_size, normalise=True)
     self.conv4 = spectral_norm(nn.Conv2d(4 * hidden_size, 8 * hidden_size, 4, stride=2, padding=1))
-    self.in4 = nn.InstanceNorm2d(8 * hidden_size)
+    self.in4 = nn.InstanceNorm2d(8 * hidden_size, affine=True)
     self.conv5 = spectral_norm(nn.Conv2d(8 * hidden_size, 1, 4, stride=1, padding=0))
     self.apply(_weight_init)
 
