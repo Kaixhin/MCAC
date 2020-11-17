@@ -57,17 +57,15 @@ class SelfAttention2d(nn.Module):
 
 
 class StyleGANBlock(nn.Module):
-  def __init__(self, hidden_size, upsample=True):
+  def __init__(self, input_size, output_size, latent_size, upsample=True):
     super().__init__()
     if upsample:
-      self.conv1 = nn.Conv2d(hidden_size, hidden_size, 3, padding=1)
+      self.conv1 = nn.Conv2d(input_size, input_size, 3, padding=1)
     else:
-      self.base = nn.Parameter(torch.randn(64, hidden_size, 4, 4))
+      self.base = nn.Parameter(torch.randn(1, input_size, 4, 4))
     self.B1 = nn.Parameter(torch.tensor([0.01]))
-    self.A1 = nn.Linear(hidden_size, 2 * hidden_size)
-    self.conv2 = nn.Conv2d(hidden_size, hidden_size, 3, padding=1)
-    self.B2 = nn.Parameter(torch.tensor([0.01]))
-    self.A2 = nn.Linear(hidden_size, 2 * hidden_size)
+    self.A1 = nn.Linear(latent_size, 2 * input_size)
+    self.conv2 = nn.Conv2d(input_size, output_size, 3, padding=1)
 
   def forward(self, w: torch.Tensor, x: Optional[torch.Tensor]=None):
     if hasattr(self, 'base'):
@@ -75,10 +73,8 @@ class StyleGANBlock(nn.Module):
     elif x is not None and hasattr(self, 'conv1'):
       x = F.relu(self.conv1(F.interpolate(x, scale_factor=2.0, mode='bilinear', align_corners=True)))
     x = x + self.B1 * torch.randn_like(x)
-    x = adaptive_instance_norm_2d(x, self.A1(w))
+    x = adaptive_instance_norm_2d(x, F.relu(self.A1(w)))
     x = F.relu(self.conv2(x))
-    x = x + self.B2 * torch.randn_like(x)
-    x = adaptive_instance_norm_2d(x, self.A2(w))
     return x
 
 
@@ -93,23 +89,23 @@ class StyleGANGenerator(Generator):
     self.age = 0
 
     self.latent_size = latent_size
-    self.mapping = nn.Sequential(nn.Linear(latent_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size))
-    self.block1 = StyleGANBlock(hidden_size, upsample=False)  # 4x4
-    self.block2 = StyleGANBlock(hidden_size)  # 8x8
-    self.block3 = StyleGANBlock(hidden_size)  # 16x16
-    self.block4 = StyleGANBlock(hidden_size)  # 32x32
-    self.block5 = StyleGANBlock(hidden_size)  # 64x64
+    # self.mapping = nn.Sequential(nn.Linear(latent_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size))
+    self.block1 = StyleGANBlock(16 * hidden_size, 8 * hidden_size, latent_size, upsample=False)  # 4x4
+    self.block2 = StyleGANBlock(8 * hidden_size, 4 * hidden_size, latent_size)  # 8x8
+    self.block3 = StyleGANBlock(4 * hidden_size, 2 * hidden_size, latent_size)  # 16x16
+    self.block4 = StyleGANBlock(2 * hidden_size, hidden_size, latent_size)  # 32x32
+    self.block5 = StyleGANBlock(hidden_size, hidden_size, latent_size)  # 64x64
     self.conv = nn.Conv2d(hidden_size, 3, 5, padding=2)
     self.apply(_weight_init)
 
   def forward(self, z):
-    w = self.mapping(z)
-    x = self.block1(w)
-    x = self.block2(w, x)
-    x = self.block3(w, x)
-    x = self.block4(w, x)
-    x = self.block5(w, x)
-    return torch.sigmoid(self.conv(x))
+    # w = self.mapping(z)
+    x = self.block1(z)
+    x = self.block2(z, x)
+    x = self.block3(z, x)
+    x = self.block4(z, x)
+    x = self.block5(z, x)
+    return torch.tanh(self.conv(x)) / 2 + 0.5
 
 
 class CPPNGenerator(Generator):
@@ -142,13 +138,13 @@ class Discriminator(nn.Module):
     super().__init__()
     self.age, self.usage = 0, 0
 
-    self.conv1 = spectral_norm(CoordConv2d(3, hidden_size, 4, 64, 64, stride=2, padding=1))
-    self.conv2 = spectral_norm(nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1, bias=False))
+    self.conv1 = spectral_norm(nn.Conv2d(3, hidden_size, 4, stride=2, padding=1))
+    self.conv2 = spectral_norm(nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1))
     self.in2 = nn.InstanceNorm2d(2 * hidden_size)
-    self.conv3 = spectral_norm(nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1, bias=False))
+    self.conv3 = spectral_norm(nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1))
     self.in3 = nn.InstanceNorm2d(4 * hidden_size)
-    self.att3 = SelfAttention2d(4 * hidden_size, normalise=True)
-    self.conv4 = spectral_norm(nn.Conv2d(4 * hidden_size, 8 * hidden_size, 4, stride=2, padding=1, bias=False))
+    # self.att3 = SelfAttention2d(4 * hidden_size, normalise=True)
+    self.conv4 = spectral_norm(nn.Conv2d(4 * hidden_size, 8 * hidden_size, 4, stride=2, padding=1))
     self.in4 = nn.InstanceNorm2d(8 * hidden_size)
     self.conv5 = spectral_norm(nn.Conv2d(8 * hidden_size, 1, 4, stride=1, padding=0))
     self.apply(_weight_init)
@@ -157,7 +153,7 @@ class Discriminator(nn.Module):
     x = F.leaky_relu(self.conv1(x), 0.2)
     x = F.leaky_relu(self.in2(self.conv2(x)), 0.2)
     x = F.leaky_relu(self.in3(self.conv3(x)), 0.2)
-    x = self.att3(x)
+    # x = self.att3(x)
     x = F.leaky_relu(self.in4(self.conv4(x)), 0.2)
     return self.conv5(x).view(-1)
 

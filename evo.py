@@ -43,14 +43,14 @@ def _adversarial_training(generator, discriminator, generator_optimiser, discrim
       save_image(fake_data, f'results/{epoch}_{i}.png')
 
 
-def evolve_seed_genomes(rand_pop, num_seeds, latent_size, batch_size, device):
+def evolve_seed_genomes(rand_pop, num_seeds, latent_size, learning_rate, batch_size, device):
   # Train a single generator and discriminator with standard GAN training + R1 grad penalty
   generator, discriminator = rand_pop[0], rand_pop[-1]  # TODO: Assumes first half of queue is generators and second half is discriminators
   generator.to(device=device)
   discriminator.to(device=device)
-  generator_optimiser, discriminator_optimiser = Adam(generator.parameters(), lr=1e-4), Adam(discriminator.parameters(), lr=1e-4)
+  generator_optimiser, discriminator_optimiser = Adam(generator.parameters(), lr=learning_rate), Adam(discriminator.parameters(), lr=learning_rate)
 
-  dataset = CelebA(root='data', transform=transforms.Compose([transforms.ToTensor(), nn.Sequential(transforms.Resize([64]), transforms.CenterCrop(64))]), download=True)
+  dataset = CelebA(root='data', transform=transforms.Compose([transforms.ToTensor(), transforms.CenterCrop(148), transforms.Resize([64])]), download=True)
   dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=6)
 
   epoch = 0
