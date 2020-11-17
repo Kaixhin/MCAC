@@ -9,10 +9,11 @@ from models import Discriminator, generate_random_population, Generator
 
 
 # Setup
+os.makedirs(f'models', exist_ok=True)  # Make models directory
 os.makedirs(f'results', exist_ok=True)  # Make results directory
 parser = argparse.ArgumentParser(description='MCAC')
 parser.add_argument('--seed', type=int, default=1, metavar='SEED', help='Random seed')
-parser.add_argument('--generator', type=str, default='StyleGAN', choices=['StyleGAN', 'CPPN'], metavar='GENERATOR', help='Generator type')
+parser.add_argument('--generator', type=str, default='DCGAN', choices=['DCGAN', 'StyleGAN', 'CPPN'], metavar='GENERATOR', help='Generator type')
 parser.add_argument('--initial-pop', type=int, default=50, metavar='INITIAL', help='Initial population size')
 parser.add_argument('--num-seeds', type=int, default=5, metavar='SEEDS', help='Number of seed genomes to evolve that satisfy the MC')
 parser.add_argument('--viable-pop-capacity', type=int, default=200, metavar='CAPACITY', help='Viable population capacity')

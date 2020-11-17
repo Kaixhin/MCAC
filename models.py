@@ -6,7 +6,7 @@ from torch.nn.utils import spectral_norm
 
 
 def _weight_init(module):
-  if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d):
+  if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d):
     nn.init.normal_(module.weight, 0, 0.02)
     if module.bias is not None: nn.init.constant_(module.bias, 0)
 
@@ -81,6 +81,29 @@ class StyleGANBlock(nn.Module):
 class Generator(nn.Module):
   def __init__(self):
     super().__init__()
+
+
+class DCGANGenerator(nn.Module):
+  def __init__(self, latent_size, hidden_size=64):
+    super().__init__()
+    self.age = 0
+
+    self.conv1 = nn.ConvTranspose2d(latent_size, 8 * hidden_size, 4, stride=1, padding=0)
+    self.conv2 = nn.ConvTranspose2d(8 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1)
+    self.in2 = nn.InstanceNorm2d(4 * hidden_size)
+    self.conv3 = nn.ConvTranspose2d(4 * hidden_size, 2 * hidden_size, 4, stride=2, padding=1)
+    self.in3 = nn.InstanceNorm2d(2 * hidden_size)
+    self.conv4 = nn.ConvTranspose2d(2 * hidden_size, hidden_size, 4, stride=2, padding=1)
+    self.in4 = nn.InstanceNorm2d(hidden_size)
+    self.conv5 = nn.ConvTranspose2d(hidden_size, 3, 4, stride=2, padding=1)
+    self.apply(_weight_init)
+
+  def forward(self, x):
+    x = F.relu(self.conv1(x.view(x.size(0), x.size(1), 1, 1)))
+    x = F.relu(self.in2(self.conv2(x)))
+    x = F.relu(self.in3(self.conv3(x)))
+    x = F.relu(self.in4(self.conv4(x)))
+    return torch.tanh(self.conv5(x)) / 2 + 0.5
 
 
 class StyleGANGenerator(Generator):
@@ -159,8 +182,5 @@ class Discriminator(nn.Module):
 
 
 def generate_random_population(generator, pop_size, latent_size, hidden_size):
-  if generator == 'StyleGAN':
-    G = StyleGANGenerator
-  elif generator == 'CPPN':
-    G = CPPNGenerator
+  G = dict(DCGAN=DCGANGenerator, StyleGAN=StyleGANGenerator, CPPN=CPPNGenerator)[generator]
   return [G(latent_size, hidden_size) for _ in range(pop_size)] + [Discriminator(hidden_size) for _ in range(pop_size)]

@@ -21,26 +21,30 @@ def evaluate_mc(generator, discriminator, threshold, num_evaluations):
     return mc_satisfied
 
 
-def _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, device):
+def _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, batch_size, fixed_noise, device):
+  label_ones, label_zeros = torch.ones(batch_size, device=device), torch.zeros(batch_size, device=device)
   for i, real_data in enumerate(dataloader):
     print(i)
     # Train discriminator
     discriminator_optimiser.zero_grad()
     fake_data = generator(torch.randn(real_data[0].size(0), latent_size, device=device))
     D_real, D_fake = discriminator(real_data[0].to(device=device)), discriminator(fake_data.detach())
-    discriminator_loss = F.binary_cross_entropy_with_logits(D_real, torch.ones_like(D_real)) + F.binary_cross_entropy_with_logits(D_fake, torch.zeros_like(D_fake))
+    discriminator_loss = F.binary_cross_entropy_with_logits(D_real, label_ones) + F.binary_cross_entropy_with_logits(D_fake, label_zeros)
     discriminator_loss.backward()
     discriminator_optimiser.step()
 
     # Train generator
-    generator_optimiser.zero_grad()
-    D_fake = discriminator(fake_data)
-    generator_loss = F.binary_cross_entropy_with_logits(D_fake, torch.ones_like(D_fake))
-    generator_loss.backward()
-    generator_optimiser.step()
+    for j in range(2):
+      generator_optimiser.zero_grad()
+      D_fake = discriminator(fake_data if j == 0 else generator(torch.randn(real_data[0].size(0), latent_size, device=device)))
+      generator_loss = F.binary_cross_entropy_with_logits(D_fake, label_ones)
+      generator_loss.backward()
+      generator_optimiser.step()
+
     if i % 500 == 0:
       print(epoch, i, discriminator_loss.item(), generator_loss.item())
-      save_image(fake_data, f'results/{epoch}_{i}.png')
+      with torch.no_grad():
+        save_image(generator(fixed_noise), f'results/{epoch}_{i}.png')
 
 
 def evolve_seed_genomes(rand_pop, num_seeds, latent_size, learning_rate, batch_size, device):
@@ -53,12 +57,12 @@ def evolve_seed_genomes(rand_pop, num_seeds, latent_size, learning_rate, batch_s
   dataset = CelebA(root='data', transform=transforms.Compose([transforms.ToTensor(), transforms.CenterCrop(148), transforms.Resize([64])]), download=True)
   dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=6)
 
-  epoch = 0
+  epoch, fixed_noise = 0, torch.randn(batch_size, latent_size, device=device)
   while True:
-    _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, device)
+    _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, batch_size, fixed_noise, device)
     epoch += 1
-    torch.save(generator.state_dict(), f'models/generator_{epoch}.pth')
-    torch.save(discriminator.state_dict(), f'models/discriminator_{epoch}.pth')
+    torch.save(generator.state_dict(), f'models/generator_{epoch}.pt')
+    torch.save(discriminator.state_dict(), f'models/discriminator_{epoch}.pt')
   quit()
 
   return rand_pop
