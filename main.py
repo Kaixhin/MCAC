@@ -20,7 +20,7 @@ parser.add_argument('--viable-pop-capacity', type=int, default=200, metavar='CAP
 parser.add_argument('--max-epochs', type=int, default=500, metavar='EPOCHS', help='Max number of epochs')
 parser.add_argument('--evaluation-size', type=int, default=64, metavar='SIZE', help='Number of individuals to evaluate simultaneously')
 parser.add_argument('--resource-limit', type=int, default=5, metavar='LIMIT', help='Max number of evaluations that count towards MC')
-parser.add_argument('--mutation-rate', type=float, default=0.2, metavar='MUTATION', help='Mutation rate')
+parser.add_argument('--mutation-rate', type=float, default=0.05, metavar='MUTATION', help='Mutation rate')
 parser.add_argument('--criterion-threshold', type=float, default=0.3, metavar='THRESHOLD', help='Criterion threshold')
 # GAN hyperparameters
 parser.add_argument('--generator', type=str, default='DCGAN', choices=['DCGAN', 'StyleGAN', 'CPPN'], metavar='GENERATOR', help='Generator type')
@@ -54,7 +54,6 @@ if __name__ == '__main__':
     children = reproduce(parents, args.mutation_rate)
     [viable_pop.append(p) for p in parents]
 
-    eval_indiv = None
     for i, child in enumerate(children):  # TODO: Somehow make sure there are both generators and discriminators?
       if isinstance(child, Generator):
         for _child in children:

@@ -83,7 +83,7 @@ class Generator(nn.Module):
     super().__init__()
 
 
-class DCGANGenerator(nn.Module):
+class DCGANGenerator(Generator):
   def __init__(self, latent_size, hidden_size=64):
     super().__init__()
     self.age = 0

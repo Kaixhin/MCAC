@@ -1,5 +1,6 @@
 from collections import deque
 from copy import deepcopy
+import os
 import numpy as np
 import torch
 from torch import autograd, jit, nn
@@ -49,19 +50,24 @@ def _adversarial_training(generator, discriminator, generator_optimiser, discrim
 
 
 def evolve_seed_genomes(rand_pop, num_seeds, latent_size, learning_rate, batch_size, epochs, fixed_latent, mutation_rate, device):
-  # Train a single generator and discriminator with standard GAN training
   generator, discriminator = rand_pop[0], rand_pop[-1]  # TODO: Assumes first half of queue is generators and second half is discriminators
   generator.to(device=device)
   discriminator.to(device=device)
-  generator_optimiser, discriminator_optimiser = Adam(generator.parameters(), lr=learning_rate), Adam(discriminator.parameters(), lr=learning_rate)
 
-  dataset = CelebA(root='data', transform=transforms.Compose([transforms.ToTensor(), transforms.CenterCrop(148), transforms.Resize([64])]), download=True)
-  dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=6)
+  if os.path.exists('models/generator.pt') and os.path.exists('models/discriminator.pt'):
+    # Load pretrained models
+    generator.load_state_dict(torch.load('models/generator.pt', map_location='cpu'))
+    discriminator.load_state_dict(torch.load('models/discriminator.pt', map_location='cpu'))
+  else:
+    # Train a single generator and discriminator with standard GAN training
+    dataset = CelebA(root='data', transform=transforms.Compose([transforms.ToTensor(), transforms.CenterCrop(148), transforms.Resize([64])]), download=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=6)
+    generator_optimiser, discriminator_optimiser = Adam(generator.parameters(), lr=learning_rate), Adam(discriminator.parameters(), lr=learning_rate)
 
-  for epoch in range(epochs):
-    _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, batch_size, fixed_latent, device)
-    torch.save(generator.state_dict(), f'models/generator_{epoch}.pt')
-    torch.save(discriminator.state_dict(), f'models/discriminator_{epoch}.pt')
+    for epoch in range(epochs):
+      _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, batch_size, fixed_latent, device)
+      torch.save(generator.state_dict(), f'models/generator_{epoch}.pt')
+      torch.save(discriminator.state_dict(), f'models/discriminator_{epoch}.pt')
   
   # Create viable population from trained generator and discriminator
   generator.eval()
