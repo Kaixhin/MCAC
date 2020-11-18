@@ -13,18 +13,17 @@ from torchvision.utils import save_image
 from models import Discriminator
 
 
-def evaluate_mc(generator, discriminator, threshold, num_evaluations):
+def evaluate_mc(generator, discriminator, threshold, num_evaluations, fixed_latent):
   with torch.no_grad():
-    img = generator()
-    mc_satisfied = discriminator(img).std().item() > threshold
-    if mc_satisfied: save_image(img, f'results/{num_evaluations}.png')
+    img = generator(fixed_latent)
+    mc_satisfied = torch.sigmoid(discriminator(img)).std().item() > threshold
+    save_image(img, f'results/{num_evaluations}_satisfied.png' if mc_satisfied else f'results/{num_evaluations}.png')
     return mc_satisfied
 
 
-def _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, batch_size, fixed_noise, device):
+def _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, batch_size, fixed_latent, device):
   label_ones, label_zeros = torch.ones(batch_size, device=device), torch.zeros(batch_size, device=device)
   for i, real_data in enumerate(dataloader):
-    print(i)
     # Train discriminator
     discriminator_optimiser.zero_grad()
     fake_data = generator(torch.randn(real_data[0].size(0), latent_size, device=device))
@@ -44,11 +43,13 @@ def _adversarial_training(generator, discriminator, generator_optimiser, discrim
     if i % 500 == 0:
       print(epoch, i, discriminator_loss.item(), generator_loss.item())
       with torch.no_grad():
-        save_image(generator(fixed_noise), f'results/{epoch}_{i}.png')
+        generator.eval()
+        save_image(generator(fixed_latent), f'results/adversarial_{epoch}_{i}.png')
+        generator.train()
 
 
-def evolve_seed_genomes(rand_pop, num_seeds, latent_size, learning_rate, batch_size, device):
-  # Train a single generator and discriminator with standard GAN training + R1 grad penalty
+def evolve_seed_genomes(rand_pop, num_seeds, latent_size, learning_rate, batch_size, epochs, fixed_latent, mutation_rate, device):
+  # Train a single generator and discriminator with standard GAN training
   generator, discriminator = rand_pop[0], rand_pop[-1]  # TODO: Assumes first half of queue is generators and second half is discriminators
   generator.to(device=device)
   discriminator.to(device=device)
@@ -57,14 +58,15 @@ def evolve_seed_genomes(rand_pop, num_seeds, latent_size, learning_rate, batch_s
   dataset = CelebA(root='data', transform=transforms.Compose([transforms.ToTensor(), transforms.CenterCrop(148), transforms.Resize([64])]), download=True)
   dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=6)
 
-  epoch, fixed_noise = 0, torch.randn(batch_size, latent_size, device=device)
-  while True:
-    _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, batch_size, fixed_noise, device)
-    epoch += 1
+  for epoch in range(epochs):
+    _adversarial_training(generator, discriminator, generator_optimiser, discriminator_optimiser, dataloader, latent_size, epoch, batch_size, fixed_latent, device)
     torch.save(generator.state_dict(), f'models/generator_{epoch}.pt')
     torch.save(discriminator.state_dict(), f'models/discriminator_{epoch}.pt')
-  quit()
-
+  
+  # Create viable population from trained generator and discriminator
+  generator.eval()
+  discriminator.eval()
+  rand_pop = [reproduce([generator], mutation_rate)[0] for _ in range(num_seeds)] + [reproduce([discriminator], mutation_rate)[0] for _ in range(num_seeds)]
   return rand_pop
 
 
@@ -76,10 +78,14 @@ def remove_oldest(viable_pop, num_removals):
 def reproduce(parents, mutation_rate):
   children = []
   for parent in parents:
+    if isinstance(parent, Discriminator): parent.remove_spectral_norm()  # Remove spectral norm to allow deepcopy
     child = deepcopy(parent)
     child.age = 0
     if isinstance(child, Discriminator): child.usage = 0
     for parameter in child.parameters():
       parameter.data.add_(mutation_rate * torch.randn_like(parameter.data))
+    if isinstance(parent, Discriminator):
+      parent.add_spectral_norm()  # Add back spectral norm
+      child.add_spectral_norm()
     children.append(child)
   return children

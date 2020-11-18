@@ -2,7 +2,7 @@ from typing import Optional
 import torch
 from torch import jit, nn
 from torch.nn import functional as F
-from torch.nn.utils import spectral_norm
+from torch.nn.utils import remove_spectral_norm, spectral_norm
 
 
 def _weight_init(module):
@@ -161,16 +161,23 @@ class Discriminator(nn.Module):
     super().__init__()
     self.age, self.usage = 0, 0
 
-    self.conv1 = spectral_norm(nn.Conv2d(3, hidden_size, 4, stride=2, padding=1))
-    self.conv2 = spectral_norm(nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1))
+    self.conv1 = nn.Conv2d(3, hidden_size, 4, stride=2, padding=1)
+    self.conv2 = nn.Conv2d(hidden_size, 2 * hidden_size, 4, stride=2, padding=1)
     self.in2 = nn.InstanceNorm2d(2 * hidden_size, affine=True)
-    self.conv3 = spectral_norm(nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1))
+    self.conv3 = nn.Conv2d(2 * hidden_size, 4 * hidden_size, 4, stride=2, padding=1)
     self.in3 = nn.InstanceNorm2d(4 * hidden_size, affine=True)
     # self.att3 = SelfAttention2d(4 * hidden_size, normalise=True)
-    self.conv4 = spectral_norm(nn.Conv2d(4 * hidden_size, 8 * hidden_size, 4, stride=2, padding=1))
+    self.conv4 = nn.Conv2d(4 * hidden_size, 8 * hidden_size, 4, stride=2, padding=1)
     self.in4 = nn.InstanceNorm2d(8 * hidden_size, affine=True)
-    self.conv5 = spectral_norm(nn.Conv2d(8 * hidden_size, 1, 4, stride=1, padding=0))
+    self.conv5 = nn.Conv2d(8 * hidden_size, 1, 4, stride=1, padding=0)
     self.apply(_weight_init)
+    self.add_spectral_norm()
+
+  def add_spectral_norm(self):
+    self.conv1, self.conv2, self.conv3, self.conv4, self.conv5 = spectral_norm(self.conv1), spectral_norm(self.conv2), spectral_norm(self.conv3), spectral_norm(self.conv4), spectral_norm(self.conv5)
+
+  def remove_spectral_norm(self):
+    self.conv1, self.conv2, self.conv3, self.conv4, self.conv5 = remove_spectral_norm(self.conv1), remove_spectral_norm(self.conv2), remove_spectral_norm(self.conv3), remove_spectral_norm(self.conv4), remove_spectral_norm(self.conv5)
 
   def forward(self, x):
     x = F.leaky_relu(self.conv1(x), 0.2)
