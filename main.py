@@ -15,7 +15,7 @@ parser.add_argument('--generator', type=str, default='StyleGAN', choices=['Style
 parser.add_argument('--initial-pop', type=int, default=50, metavar='INITIAL', help='Initial population size')
 parser.add_argument('--num-seeds', type=int, default=5, metavar='SEEDS', help='Number of seed genomes to evolve that satisfy the MC')
 parser.add_argument('--viable-pop-capacity', type=int, default=200, metavar='CAPACITY', help='Viable population capacity')
-parser.add_argument('--max-epochs', type=int, default=500, metavar='EPOCHS', help='Max number of epochs')
+parser.add_argument('--max-generations', type=int, default=500, metavar='GENERATIONS', help='Max number of generations')
 parser.add_argument('--batch-size', type=int, default=64, metavar='SIZE', help='Number of individuals to evaluate simultaneously')
 parser.add_argument('--criterion-threshold', type=float, default=0.3, metavar='THRESHOLD', help='Criterion threshold')
 parser.add_argument('--resource-limit', type=int, default=5, metavar='LIMIT', help='Max number of evaluations that count towards MC')
@@ -29,7 +29,7 @@ viable_pop = deque(evolve_seed_genomes(rand_pop, args.num_seeds))
 
 
 num_evaluations = 0
-for _ in range(args.max_epochs):
+for _ in range(args.max_generations):
   # Increase age of all solutions in viable population
   for s in viable_pop:
     s.age += 1
