@@ -1,7 +1,8 @@
 from matplotlib import cm
 import numpy as np
-from scipy.special import softmax
 import torch
+from torch import multiprocessing as mp
+from torch.nn.functional import softmax
 from torchvision.utils import save_image
 
 
@@ -31,16 +32,19 @@ def V_24(x, y, c, f, p_1, p_2, p_3, p_4):  # PDJ
 
 
 F = [V_0, V_1, V_2, V_3, V_4, V_17, V_24]
-cmap = cm.get_cmap('nipy_spectral')
-
 height, width = 64, 64
-imgs = []
-for _ in range(16):
-  weights = softmax(np.random.randn(len(F)))  # Function weights
-  params = []
-  for _ in range(len(F)):
-    params.append(np.random.uniform(-1, 1, 10))  # Function params
-  colours = np.random.uniform(0, 1, len(F))  # Function colours
+cmap = cm.get_cmap('nipy_spectral')
+batch_size = 64
+imgs = torch.zeros(batch_size, 3, height, width).share_memory_()
+
+
+# Parameters
+batch_weights = softmax(torch.randn(batch_size, len(F)), dim=1).share_memory_()  # Function weights
+batch_params = torch.randn(batch_size, len(F), 10).share_memory_()  # Function params
+batch_colours = torch.rand(batch_size, len(F)).share_memory_()  # Function colours
+
+def create_fractal_image(batch_i):
+  weights, params, colours = batch_weights[batch_i], batch_params[batch_i], batch_colours[batch_i]
 
   img = torch.zeros(3, height, width)
   (x, y), colour = np.random.uniform(-1, 1, 2), np.random.uniform(0, 1)  # Get initial coordinates and colour
@@ -48,10 +52,16 @@ for _ in range(16):
     i = np.random.multinomial(1, weights).nonzero()[0][0]  # Pick a random function
     a, b, c, d, e, f, p_1, p_2, p_3, p_4 = params[i]  # Get associated parameters
     x, y = F[i](a * x + b * y + c, d * x + e * y + f, c, f, p_1, p_2, p_3, p_4)  # Get new coordinates
-    colour = (colour + colours[i]) / 2  # Blend colour with function colour
+    colour = (colour + colours[i].item()) / 2  # Blend colour with function colour
     if iteration >= 20:  # Plot points after the first 20 iterations
       img_x, img_y = int(width // 2 * (x + 1)), int(height // 2 * (y + 1)) 
-      if 0 <= img_x < width and 0 <= img_y < height: img[:, img_y, img_x] = torch.as_tensor(cmap(colour)[:3])  # Plot point if in range
-  imgs.append(img)
+      if 0 <= img_x < width and 0 <= img_y < height:
+        img[:, img_y, img_x] = torch.as_tensor(cmap(colour)[:3])  # Plot point if in range
+  imgs[batch_i] = img
 
-save_image(torch.stack(imgs), 'fractal.png')
+
+pool = mp.Pool(8)
+pool.map(create_fractal_image, range(batch_size))
+pool.close()
+pool.join()
+save_image(imgs, 'fractal.png')
