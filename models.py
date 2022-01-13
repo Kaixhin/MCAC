@@ -140,19 +140,20 @@ class FractalFlameGenerator(Generator):
     self.age = 0
     
     self.batch_size, height, width = 64, 64, 64
+    self.noise_scale = 3
     self.register_buffer('imgs', torch.zeros(self.batch_size, 3, height, width).share_memory_())
-    self.weights = nn.Parameter(F.softmax(torch.randn(self.batch_size, 7), dim=1).share_memory_())  # Function weights
-    self.params = nn.Parameter(torch.randn(self.batch_size, 7, 10).share_memory_())  # Function params
-    self.colours = nn.Parameter(torch.rand(self.batch_size, 7).share_memory_())  # Function colours
-
-  def constrain_parameters(self):
-    self.imgs.zero_()  # Reset the image canvas
-    self.weights.data = F.softmax(self.weights.data, dim=1)  # Normalise weights
-    self.colours.data.clamp_(min=0, max=1)  # Clamp colour index to [0, 1]
+    self.weights = nn.Parameter(torch.randn(1, 7).share_memory_())  # Function weights; parameterisation shared across batch
+    self.params = nn.Parameter(torch.randn(1, 7, 10).share_memory_())  # Function params
+    self.colours = nn.Parameter(torch.rand(1, 7).share_memory_())  # Function colours
 
   def forward(self):
+    self.imgs.zero_()  # Reset the image canvas
+    weights = F.softmax(self.weights.data * self.noise_scale * torch.rand(self.batch_size, 7), dim=1)  # Multiply by batch noise and normalise weights
+    params = self.params.data * self.noise_scale * torch.rand(self.batch_size, 7, 10)  # Multiply by batch noise
+    colours = torch.clamp(self.colours.data * self.noise_scale * torch.rand(self.batch_size, 7), min=0, max=1)  # Multiply by batch noise and clamp colour index to [0, 1]
+
     pool = mp.Pool(8)
-    args = [[i] + [self.imgs, self.weights[i], self.params[i], self.colours[i]] for i in range(self.batch_size)]
+    args = [[i] + [self.imgs, weights[i], params[i], colours[i]] for i in range(self.batch_size)]
     pool.starmap(create_fractal_image, args)
     pool.close()
     pool.join()
