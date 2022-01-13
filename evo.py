@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torchvision.utils import save_image
 
-from models import Discriminator
+from models import Discriminator, FractalFlameGenerator
 
 
 def evaluate_mc(generator, discriminator, threshold, num_evaluations):
@@ -33,5 +33,6 @@ def reproduce(parents, mutation_rate):
     if isinstance(child, Discriminator): child.usage = 0
     for parameter in child.parameters():
       parameter.data.add_(mutation_rate * torch.randn_like(parameter.data))
+    if isinstance(child, FractalFlameGenerator): child.constrain_parameters()
     children.append(child)
   return children

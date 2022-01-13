@@ -1,9 +1,6 @@
 from matplotlib import cm
 import numpy as np
 import torch
-from torch import multiprocessing as mp
-from torch.nn.functional import softmax
-from torchvision.utils import save_image
 
 
 def V_0(x, y, c, f, p_1, p_2, p_3, p_4):  # Linear
@@ -36,17 +33,9 @@ height, width = 64, 64
 cmap = cm.get_cmap('nipy_spectral')
 gamma = 4
 batch_size = 64
-imgs = torch.zeros(batch_size, 3, height, width).share_memory_()
 
 
-# Parameters
-batch_weights = softmax(torch.randn(batch_size, len(F)), dim=1).share_memory_()  # Function weights
-batch_params = torch.randn(batch_size, len(F), 10).share_memory_()  # Function params
-batch_colours = torch.rand(batch_size, len(F)).share_memory_()  # Function colours
-
-def create_fractal_image(batch_i):
-  weights, params, colours = batch_weights[batch_i], batch_params[batch_i], batch_colours[batch_i]
-
+def create_fractal_image(batch_i, imgs, weights, params, colours):
   img = torch.zeros(4, height, width)  # RGBA
   (x, y), colour = np.random.uniform(-1, 1, 2), np.random.uniform(0, 1)  # Get initial coordinates and colour
   for iteration in range(20000):
@@ -62,10 +51,3 @@ def create_fractal_image(batch_i):
   img[3] = img[3].log() / img[3].max().log()  # Use log-density display
   img = img[:3] * (img[3] ** (1 / gamma))  # Use gamma correction
   imgs[batch_i] = img
-
-
-pool = mp.Pool(8)
-pool.map(create_fractal_image, range(batch_size))
-pool.close()
-pool.join()
-save_image(imgs, 'fractal.png')

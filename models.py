@@ -1,6 +1,9 @@
 import torch
 from torch import nn
+from torch import multiprocessing as mp
 from torch.nn import functional as F
+
+from flame import create_fractal_image
 
 
 def adaptive_instance_norm_2d(x, y):
@@ -19,7 +22,7 @@ class CoordConv2d(nn.Conv2d):
   def __init__(self, in_channels, out_channels, kernel_size, height, width, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
     super().__init__(in_channels + 2, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, padding_mode=padding_mode)
     self.height, self.width = height, width
-    x_grid, y_grid = torch.meshgrid(torch.linspace(-1, 1, width), torch.linspace(-1, 1, height))
+    x_grid, y_grid = torch.meshgrid(torch.linspace(-1, 1, width), torch.linspace(-1, 1, height), indexing='ij')
     self.register_buffer('coordinates', torch.stack([x_grid, y_grid]).unsqueeze(dim=0))
 
   def forward(self, x):
@@ -83,8 +86,9 @@ class StyleGANGenerator(Generator):
     super().__init__()
     self.age = 0
 
+    batch_size = 64
     self.latent_size = latent_size
-    self.z = nn.Parameter(torch.randn(64, latent_size))
+    self.z = nn.Parameter(torch.randn(batch_size, latent_size))
     self.mapping = nn.Sequential(nn.Linear(latent_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size), nn.ELU(), nn.Linear(hidden_size, hidden_size))
     self.block1 = StyleGANBlock(hidden_size, upsample=False)  # 4x4
     self.block2 = StyleGANBlock(hidden_size)  # 8x8
@@ -109,7 +113,7 @@ class CPPNGenerator(Generator):
     self.age = 0
 
     self.height, self.width = 64, 64
-    x_grid, y_grid = torch.meshgrid(torch.linspace(-3, 3, self.width), torch.linspace(-3, 3, self.height))
+    x_grid, y_grid = torch.meshgrid(torch.linspace(-3, 3, self.width), torch.linspace(-3, 3, self.height), indexing='ij')
     self.register_buffer('coordinates', torch.stack([x_grid, y_grid]).unsqueeze(dim=0))
     self.latent_size = latent_size
     self.z = nn.Parameter(torch.randn(latent_size))
@@ -128,6 +132,31 @@ class CPPNGenerator(Generator):
     x = relu_sin_tanh(self.fc3(x))
     x = relu_sin_tanh(self.fc4(x))
     return torch.sigmoid(self.fc5(x)).permute(0, 3, 1, 2)
+
+
+class FractalFlameGenerator(Generator):
+  def __init__(self):
+    super().__init__()
+    self.age = 0
+    
+    self.batch_size, height, width = 64, 64, 64
+    self.register_buffer('imgs', torch.zeros(self.batch_size, 3, height, width).share_memory_())
+    self.weights = nn.Parameter(F.softmax(torch.randn(self.batch_size, 7), dim=1).share_memory_())  # Function weights
+    self.params = nn.Parameter(torch.randn(self.batch_size, 7, 10).share_memory_())  # Function params
+    self.colours = nn.Parameter(torch.rand(self.batch_size, 7).share_memory_())  # Function colours
+
+  def constrain_parameters(self):
+    self.imgs.zero_()  # Reset the image canvas
+    self.weights.data = F.softmax(self.weights.data, dim=1)  # Normalise weights
+    self.colours.data.clamp_(min=0, max=1)  # Clamp colour index to [0, 1]
+
+  def forward(self):
+    pool = mp.Pool(8)
+    args = [[i] + [self.imgs, self.weights[i], self.params[i], self.colours[i]] for i in range(self.batch_size)]
+    pool.starmap(create_fractal_image, args)
+    pool.close()
+    pool.join()
+    return self.imgs
 
 
 class Discriminator(nn.Module):
@@ -156,4 +185,6 @@ def generate_random_population(generator, pop_size):
     G = StyleGANGenerator
   elif generator == 'CPPN':
     G = CPPNGenerator
+  elif generator == 'FractalFlame':
+    G = FractalFlameGenerator
   return [G() for _ in range(pop_size)] + [Discriminator() for _ in range(pop_size)]
