@@ -14,7 +14,7 @@ def V_1(x, y, c, f, p_1, p_2, p_3, p_4):  # Sinusoidal
 
 def V_2(x, y, c, f, p_1, p_2, p_3, p_4):  # Spherical
   r = np.sqrt(x ** 2 + y ** 2)
-  return 1 / (r ** 2) * x, 1 / (r ** 2) * y
+  return 1 / ((r ** 2) * x + 1e-8), 1 / ((r ** 2) * y + 1e-8)
 
 def V_3(x, y, c, f, p_1, p_2, p_3, p_4):  # Swirl
   r = np.sqrt(x ** 2 + y ** 2)
@@ -22,7 +22,7 @@ def V_3(x, y, c, f, p_1, p_2, p_3, p_4):  # Swirl
 
 def V_4(x, y, c, f, p_1, p_2, p_3, p_4):  # Horseshoe
   r = np.sqrt(x ** 2 + y ** 2)
-  return 1 / r * ((x - y) * x + y), 1 / r * 2 * x * y
+  return 1 / (r * ((x - y) * x + y) + 1e-8), 1 / (r * 2 * x * y + 1e-8)
 
 def V_17(x, y, c, f, p_1, p_2, p_3, p_4):  # Popcorn
   return x + c * np.sin(np.tan(3 * y)), y + f * np.sin(np.tan(3 * x))
